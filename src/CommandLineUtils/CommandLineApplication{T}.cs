@@ -12,11 +12,11 @@ namespace McMaster.Extensions.CommandLineUtils
     /// Describes a set of command line arguments, options, and execution behavior
     /// using a type of <typeparamref name="TModel" /> to model the application.
     /// </summary>
-    public class CommandLineApplication<TModel> : CommandLineApplication, IModelAccessor, IDisposable
+    public class CommandLineApplication<TModel> : CommandLineApplication, IModelAccessor
         where TModel : class
     {
         private Lazy<TModel> _lazy;
-        private Func<TModel> _modelFactory = () => Activator.CreateInstance<TModel>();
+        private Func<TModel> _modelFactory = DefaultModelFactory;
 
         /// <summary>
         /// Initializes a new instance of <see cref="CommandLineApplication"/>.
@@ -74,6 +74,18 @@ namespace McMaster.Extensions.CommandLineUtils
             _lazy = new Lazy<TModel>(CreateModel);
         }
 
+        private static TModel DefaultModelFactory()
+        {
+            try
+            {
+                return Activator.CreateInstance<TModel>();
+            }
+            catch (MissingMethodException ex)
+            {
+                throw new MissingParameterlessConstructorException(typeof(TModel), ex);
+            }
+        }
+
         /// <summary>
         /// An instance of the model associated with the command line application.
         /// </summary>
@@ -108,20 +120,15 @@ namespace McMaster.Extensions.CommandLineUtils
 
         private protected override ConventionContext CreateConventionContext() => new ConventionContext(this, typeof(TModel));
 
-        void IDisposable.Dispose()
+        /// <inheritdoc />
+        public override void Dispose()
         {
             if (Model is IDisposable dt)
             {
-                dt?.Dispose();
+                dt.Dispose();
             }
 
-            foreach (var command in Commands)
-            {
-                if (command is IDisposable dc)
-                {
-                    dc.Dispose();
-                }
-            }
+            base.Dispose();
         }
     }
 }

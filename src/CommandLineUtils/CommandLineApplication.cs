@@ -21,17 +21,16 @@ namespace McMaster.Extensions.CommandLineUtils
     /// Describes a set of command line arguments, options, and execution behavior.
     /// <see cref="CommandLineApplication"/> can be nested to support subcommands.
     /// </summary>
-    public partial class CommandLineApplication : IServiceProvider
+    public partial class CommandLineApplication : IServiceProvider, IDisposable
     {
-        private List<Action<ParseResult>> _onParsingComplete;
-        internal readonly Dictionary<string, PropertyInfo> _shortOptions = new Dictionary<string, PropertyInfo>();
-        internal readonly Dictionary<string, PropertyInfo> _longOptions = new Dictionary<string, PropertyInfo>();
-        private readonly HashSet<string> _aliases = new HashSet<string>(StringComparer.Ordinal);
-
-
         private const int HelpExitCode = 0;
         internal const int ValidationErrorExitCode = 1;
 
+        private List<Action<ParseResult>> _onParsingComplete;
+        internal readonly Dictionary<string, PropertyInfo> _shortOptions = new Dictionary<string, PropertyInfo>();
+        internal readonly Dictionary<string, PropertyInfo> _longOptions = new Dictionary<string, PropertyInfo>();
+        private readonly HashSet<string> _names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private string _primaryCommandName;
         internal CommandLineContext _context;
         private IHelpTextGenerator _helpTextGenerator;
         private CommandOption _optionHelp;
@@ -105,7 +104,7 @@ namespace McMaster.Extensions.CommandLineUtils
             SetContext(context);
             _services = new Lazy<IServiceProvider>(() => new ServiceProvider(this));
             ValueParsers = parent?.ValueParsers ?? new ValueParserProvider();
-            ParserSettings = parent?.ParserSettings ?? new ParserSettings();
+            _clusterOptions = parent?._clusterOptions;
 
             _conventionContext = CreateConventionContext();
 
@@ -137,11 +136,11 @@ namespace McMaster.Extensions.CommandLineUtils
         /// </summary>
         public string Name
         {
-            get => _name;
+            get => _primaryCommandName;
             set
             {
                 Parent?.AssertCommandNameIsUnique(value, this);
-                _name = value;
+                _primaryCommandName = value;
             }
         }
 
@@ -171,7 +170,12 @@ namespace McMaster.Extensions.CommandLineUtils
         public List<CommandOption> Options { get; private set; }
 
         /// <summary>
-        /// All names by which the command can be referenced. This includes <see cref="Name"/> and an aliases added in <see cref="AddAlias"/>.
+        /// Whether a Pager should be used to display help text.
+        /// </summary>
+        public bool UsePagerForHelpText { get; set; } = true;
+
+        /// <summary>
+        /// All names by which the command can be referenced. This includes <see cref="Name"/> and an aliases added in <see cref="AddName"/>.
         /// </summary>
         public IEnumerable<string> Names
         {
@@ -182,9 +186,9 @@ namespace McMaster.Extensions.CommandLineUtils
                     yield return Name;
                 }
 
-                foreach (var alias in _aliases)
+                foreach (var names in _names)
                 {
-                    yield return alias;
+                    yield return names;
                 }
             }
         }
@@ -282,6 +286,46 @@ namespace McMaster.Extensions.CommandLineUtils
         public StringComparison OptionsComparison { get; set; }
 
         /// <summary>
+        /// <para>
+        /// One or more options of <see cref="CommandOptionType.NoValue"/>, followed by at most one option that takes values, should be accepted when grouped behind one '-' delimiter.
+        /// </para>
+        /// <para>
+        /// When true, the following are equivalent.
+        ///
+        /// <code>
+        /// -abcXyellow
+        /// -abcX=yellow
+        /// -abcX:yellow
+        /// -abc -X=yellow
+        /// -ab -cX=yellow
+        /// -a -b -c -Xyellow
+        /// -a -b -c -X yellow
+        /// -a -b -c -X=yellow
+        /// -a -b -c -X:yellow
+        /// </code>
+        /// </para>
+        /// <para>
+        /// This defaults to true unless an option with a short name of two or more characters is added.
+        /// </para>
+        /// </summary>
+        /// <remarks>
+        /// <seealso href="https://www.gnu.org/software/libc/manual/html_node/Argument-Syntax.html"/>
+        /// </remarks>
+        public bool ClusterOptions
+        {
+            // unless explicitly set, use the value of cluster options from the parent command
+            // or default to true if this is the root command
+            get => _clusterOptions.HasValue
+                ? _clusterOptions.Value
+                : Parent == null || Parent.ClusterOptions;
+            set => _clusterOptions = value;
+        }
+
+        private bool? _clusterOptions;
+
+        internal bool ClusterOptionsWasSetExplicitly => _clusterOptions.HasValue;
+
+        /// <summary>
         /// Gets the default value parser provider.
         /// <para>
         /// The value parsers control how argument values are converted from strings to other types. Additional value
@@ -332,22 +376,22 @@ namespace McMaster.Extensions.CommandLineUtils
         }
 
         /// <summary>
-        /// Add an alias for the command.
+        /// Add another name for the command.
         /// <para>
-        /// An alias is a shorter name by which a command may be referenced.
+        /// Additional names can be shorter, longer, or alternative names by which a command may be invoked on the command line.
         /// </para>
         /// </summary>
-        /// <param name="alias">The alias. Must not be null or empty.</param>
-        public void AddAlias(string alias)
+        /// <param name="name">The name. Must not be null or empty.</param>
+        public void AddName(string name)
         {
-            if (string.IsNullOrEmpty(alias))
+            if (string.IsNullOrEmpty(name))
             {
-                throw new ArgumentException("Value cannot be null or empty.", nameof(alias));
+                throw new ArgumentException("Value cannot be null or empty.", nameof(name));
             }
 
-            Parent?.AssertCommandNameIsUnique(alias, this);
+            Parent?.AssertCommandNameIsUnique(name, this);
 
-            _aliases.Add(alias);
+            _names.Add(name);
         }
 
         /// <summary>
@@ -624,16 +668,25 @@ namespace McMaster.Extensions.CommandLineUtils
         {
             args = args ?? new string[0];
 
-            var processor = new CommandLineProcessor(this, ParserSettings, args);
+            var processor = new CommandLineProcessor(this, args);
             var result = processor.Process();
             result.SelectedCommand.HandleParseResult(result);
             return result;
         }
 
         /// <summary>
-        /// Settings to control the behavior of the parser.
+        /// When an invalid argument is given, make suggestions in the error message
+        /// about similar, valid commands or options.
+        /// <para>
+        /// $ git pshu
+        /// Specify --help for a list of available options and commands
+        /// Unrecognized command or argument 'pshu'
+        ///
+        /// Did you mean this?
+        ///     push
+        /// </para>
         /// </summary>
-        public ParserSettings ParserSettings { get; }
+        public bool MakeSuggestionsInErrorMessage { get; set; } = true;
 
         /// <summary>
         /// Handle the result of parsing command line arguments.
@@ -795,7 +848,7 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <summary>
         /// Show full help.
         /// </summary>
-        public void ShowHelp() => ShowHelp(usePager: true);
+        public void ShowHelp() => ShowHelp(usePager: UsePagerForHelpText);
 
         /// <summary>
         /// Show full help.
@@ -959,13 +1012,12 @@ namespace McMaster.Extensions.CommandLineUtils
 
         internal bool MatchesName(string name)
         {
-            // TODO: make this case-sensitive by default and add a parser setting
             if (string.Equals(name, Name, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
 
-            return _aliases.Contains(name);
+            return _names.Contains(name);
         }
 
         private sealed class Builder : IConventionBuilder
@@ -1011,8 +1063,6 @@ namespace McMaster.Extensions.CommandLineUtils
         private protected virtual ConventionContext CreateConventionContext() => new ConventionContext(this, null);
 
         private bool _settingContext;
-        private string _name;
-
         internal void SetContext(CommandLineContext context)
         {
             if (_settingContext)
@@ -1032,6 +1082,18 @@ namespace McMaster.Extensions.CommandLineUtils
             }
 
             _settingContext = false;
+        }
+
+        /// <inheritdoc />
+        public virtual void Dispose()
+        {
+            foreach (var command in Commands)
+            {
+                if (command is IDisposable dc)
+                {
+                    dc.Dispose();
+                }
+            }
         }
 
         internal IServiceProvider AdditionalServices { get; set; }

@@ -15,7 +15,6 @@ namespace McMaster.Extensions.CommandLineUtils
     internal sealed class CommandLineProcessor
     {
         private readonly CommandLineApplication _app;
-        private readonly ParserSettings _settings;
         private readonly CommandLineApplication _initialCommand;
         private readonly ParameterEnumerator _enumerator;
 
@@ -32,31 +31,48 @@ namespace McMaster.Extensions.CommandLineUtils
         private CommandArgumentEnumerator _currentCommandArguments;
 
         public CommandLineProcessor(CommandLineApplication command,
-            ParserSettings settings,
             IReadOnlyList<string> arguments)
         {
             _app = command;
-            _settings = settings;
             _initialCommand = command;
             _enumerator = new ParameterEnumerator(arguments ?? new string[0]);
 
-            // TODO in 3.0, remove this check, and make ClusterOptions true always
-            // and make it an error to use short options with multiple characters
-            var allOptions = command.Commands.SelectMany(c => c.Options).Concat(command.GetOptions());
-            if (!settings.ClusterOptionsWasSetExplicitly)
+            if (!command.ClusterOptionsWasSetExplicitly)
             {
-                settings.ClusterOptions = !allOptions.Any(o => o.ShortName != null && o.ShortName.Length > 1);
+                foreach (var option in AllOptions(command))
+                {
+                    if (option.ShortName != null && option.ShortName.Length != 1)
+                    {
+                        command.ClusterOptions = false;
+                        break;
+                    }
+                }
             }
-
-            if (settings.ClusterOptions)
+            else if (command.ClusterOptions)
             {
-                foreach (var option in allOptions)
+                foreach (var option in AllOptions(command))
                 {
                     if (option.ShortName != null && option.ShortName.Length != 1)
                     {
                         throw new CommandParsingException(command,
-                            $"The ShortName on CommandOption is too long: '{option.ShortName}'. Short names cannot be more than one character long when {nameof(ParserSettings.ClusterOptions)} is enabled.");
+                            $"The ShortName on CommandOption is too long: '{option.ShortName}'. Short names cannot be more than one character long when {nameof(CommandLineApplication.ClusterOptions)} is enabled.");
                     }
+                }
+            }
+        }
+
+        internal static IEnumerable<CommandOption> AllOptions(CommandLineApplication command)
+        {
+            foreach (var option in command.Options)
+            {
+                yield return option;
+            }
+
+            foreach (var subCommand in command.Commands)
+            {
+                foreach (var option in AllOptions(subCommand))
+                {
+                    yield return option;
                 }
             }
         }
@@ -124,6 +140,8 @@ namespace McMaster.Extensions.CommandLineUtils
                 if (subcommand.MatchesName(arg.Raw))
                 {
                     _currentCommand = subcommand;
+                    // Reset the arguments enumerator when moving down the subcommand tree.
+                    _currentCommandArguments = null;
                     return true;
                 }
             }
@@ -154,20 +172,18 @@ namespace McMaster.Extensions.CommandLineUtils
             var name = arg.Name;
             if (arg.Type == ParameterType.ShortOption)
             {
-                if (_settings.ClusterOptions)
+                if (_currentCommand.ClusterOptions)
                 {
                     for (var i = 0; i < arg.Name.Length; i++)
                     {
                         var ch = arg.Name.Substring(i, 1);
 
-                        option = _currentCommand.GetOptions().SingleOrDefault(o =>
-                            string.Equals(ch, o.ShortName, _currentCommand.OptionsComparison));
+                        option = FindOption(ch, o => o.ShortName);
 
                         if (option == null)
                         {
                             // quirk for compatibility with symbol options
-                            option = _currentCommand.GetOptions().SingleOrDefault(o =>
-                                string.Equals(ch, o.SymbolName, _currentCommand.OptionsComparison));
+                            option = FindOption(ch, o => o.SymbolName);
                         }
 
                         if (option == null)
@@ -225,20 +241,17 @@ namespace McMaster.Extensions.CommandLineUtils
                 }
                 else
                 {
-                    option = _currentCommand.GetOptions().SingleOrDefault(o =>
-                        string.Equals(name, o.ShortName, _currentCommand.OptionsComparison));
+                    option = FindOption(name, o => o.ShortName);
 
                     if (option == null)
                     {
-                        option = _currentCommand.GetOptions().SingleOrDefault(o =>
-                            string.Equals(name, o.SymbolName, _currentCommand.OptionsComparison));
+                        option = FindOption(name, o => o.SymbolName);
                     }
                 }
             }
             else
             {
-                option = _currentCommand.GetOptions().SingleOrDefault(o =>
-                    string.Equals(name, o.LongName, _currentCommand.OptionsComparison));
+                option = FindOption(name, o => o.LongName);
             }
 
             if (option == null)
@@ -297,6 +310,32 @@ namespace McMaster.Extensions.CommandLineUtils
             return true;
         }
 
+        private CommandOption FindOption(string name, Func<CommandOption, string> by)
+        {
+            var options = _currentCommand
+                .GetOptions()
+                .Where(o => string.Equals(name, by(o), _currentCommand.OptionsComparison))
+                .ToList();
+
+            if (options.Count == 0)
+            {
+                return null;
+            }
+
+            if (options.Count == 1)
+            {
+                return options.First();
+            }
+
+            var helpOption = options.SingleOrDefault(o => o == _currentCommand.OptionHelp);
+            if (helpOption != null)
+            {
+                return helpOption;
+            }
+
+            throw new InvalidOperationException($"Multiple options with name \"{name}\" found. This is usually due to nested options.");
+        }
+
         private bool ProcessArgumentSeparator()
         {
             if (!_currentCommand.AllowArgumentSeparator)
@@ -319,18 +358,17 @@ namespace McMaster.Extensions.CommandLineUtils
             if (_currentCommand.ThrowOnUnexpectedArgument)
             {
                 _currentCommand.ShowHint();
-                var value = argValue ?? _enumerator.Current.Raw;
+                var value = argValue ?? _enumerator.Current?.Raw;
 
-                string suggestion = null;
-                if (_settings.MakeSuggestionsInErrorMessage && !string.IsNullOrEmpty(value))
+                var suggestions = Enumerable.Empty<string>();
+
+                if (_currentCommand.MakeSuggestionsInErrorMessage && !string.IsNullOrEmpty(value))
                 {
-                    suggestion = SuggestionCreator.GetTopSuggestion(_currentCommand, value);
+                    suggestions = SuggestionCreator.GetTopSuggestions(_currentCommand, value);
                 }
 
-                throw new UnrecognizedCommandParsingException(_currentCommand, $"Unrecognized {argTypeName} '{value}'")
-                {
-                    NearestMatch = suggestion
-                };
+                throw new UnrecognizedCommandParsingException(_currentCommand, suggestions,
+                    $"Unrecognized {argTypeName} '{value}'");
             }
 
             // All remaining arguments are stored for further use
@@ -399,11 +437,6 @@ namespace McMaster.Extensions.CommandLineUtils
                 }
 
                 return ParameterType.LongOption;
-            }
-
-            public bool MoveNext()
-            {
-                throw new NotImplementedException();
             }
         }
 

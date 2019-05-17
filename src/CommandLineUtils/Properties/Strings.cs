@@ -42,7 +42,7 @@ namespace McMaster.Extensions.CommandLineUtils
             => $"Ambiguous option name. Both {first.DeclaringType.FullName}.{first.Name} and {second.DeclaringType.FullName}.{second.Name} produce a CommandOption with the name '{optionName}'";
 
         public static string DuplicateSubcommandName(string commandName)
-            => $"The subcommand name '{commandName}' has already been been specified. Subcommand names and aliases must be unique.";
+            => $"The subcommand name '{commandName}' has already been been specified. Subcommand names must be unique.";
 
         public static string BothOptionAndArgumentAttributesCannotBeSpecified(PropertyInfo prop)
             => $"Cannot specify both {nameof(OptionAttribute)} and {nameof(ArgumentAttribute)} on property {prop.DeclaringType.Name}.{prop.Name}.";
@@ -91,5 +91,14 @@ namespace McMaster.Extensions.CommandLineUtils
 
         public static string NoPropertyOrMethodFound(string memberName, Type type)
             => $"Could not find a property or method named {memberName} on type {type.FullName}";
+
+        public static string NoParameterTypeRegistered(Type modelType, Type paramType)
+            => $"The constructor of type '{modelType}' contains the parameter of type '{paramType}' is not registered, Ensure the type '{paramType}' are registered in additional services with CommandLineApplication.Conventions.UseConstructorInjection(IServiceProvider additionalServices)";
+
+        public static string NoAnyPublicConstuctorFound(Type modelType)
+            => $"Could not find any public constructors of type '{modelType}'";
+
+        public static string NoMatchedConstructorFound(Type modelType)
+            => $"Could not found any matched constructors of type '{modelType}'";
     }
 }

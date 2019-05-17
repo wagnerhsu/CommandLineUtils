@@ -1,11 +1,7 @@
 CommandLineUtils
 ================
 
-[![Travis build status][travis-badge]](https://travis-ci.org/natemcmaster/CommandLineUtils/branches)
-[![AppVeyor build status][appveyor-badge]](https://ci.appveyor.com/project/natemcmaster/CommandLineUtils/branch/master)
-
-[travis-badge]: https://img.shields.io/travis/natemcmaster/CommandLineUtils/master.svg?label=travis&style=flat-square
-[appveyor-badge]: https://img.shields.io/appveyor/ci/natemcmaster/CommandLineUtils/master.svg?label=appveyor&style=flat-square
+[![Build Status](https://dev.azure.com/natemcmaster/github/_apis/build/status/CommandLineUtils?branchName=master)](https://dev.azure.com/natemcmaster/github/_build/latest?definitionId=3&branchName=master)
 
 [![NuGet][main-nuget-badge]][main-nuget] [![MyGet][main-myget-badge]][main-myget]
 
@@ -19,18 +15,13 @@ This is a fork of [Microsoft.Extensions.CommandLineUtils](https://github.com/asp
 
 ## Install
 
-Install the NuGet package into your project.
+Install the [NuGet package][main-nuget] into your project.
 
 ```
 PM> Install-Package McMaster.Extensions.CommandLineUtils
 ```
 ```
 $ dotnet add package McMaster.Extensions.CommandLineUtils
-```
-```xml
-<ItemGroup>
-  <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="2.2.5" />
-</ItemGroup>
 ```
 
 Pre-release builds and symbols: https://www.myget.org/gallery/natemcmaster/

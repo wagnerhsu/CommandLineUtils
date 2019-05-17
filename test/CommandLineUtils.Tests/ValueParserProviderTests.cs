@@ -69,6 +69,9 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
             [Option("--int32-arr")]
             public int[] Int32Array { get; }
 
+            [Option("--flag")]
+            public bool[] Flags { get; }
+
             [Option("--string-ilist")]
             public IList<string> StringIList { get; }
 
@@ -98,6 +101,15 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             [Option("--uri")]
             public Uri Uri { get; set; }
+
+            [Option("--datetime")]
+            public DateTime DateTime { get; }
+
+            [Option("--datetime-offset")]
+            public DateTimeOffset DateTimeOffset { get; }
+
+            [Option("--timespan")]
+            public TimeSpan TimeSpan { get; }
         }
 
         private sealed class InCulture : IDisposable
@@ -413,6 +425,56 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
         {
             var parsed = CommandLineParser.ParseArgs<Program>("--uri", uriString);
             Assert.Equal(uriString, parsed.Uri.ToString());
+        }
+
+        [Theory]
+        [InlineData("2009-06-15")]
+        [InlineData("2009-06-15T13:45:30")]
+        [InlineData("2009-06-15T13:45:30Z")]
+        public void ParseDateTime(string dateTimeString)
+        {
+            var parsed = CommandLineParser.ParseArgs<Program>("--datetime", dateTimeString);
+            var expected = DateTime.Parse(dateTimeString, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+            Assert.Equal(expected, parsed.DateTime);
+            Assert.Equal(expected.Kind, parsed.DateTime.Kind);
+        }
+
+        [Theory]
+        [InlineData("2009-06-15")]
+        [InlineData("2009-06-15T13:45:30Z")]
+        [InlineData("2009-06-15T13:45:30+08:00")]
+        public void ParseDateTimeOffset(string dateTimeOffsetString)
+        {
+            var parsed = CommandLineParser.ParseArgs<Program>("--datetime-offset", dateTimeOffsetString);
+            Assert.Equal(DateTimeOffset.Parse(dateTimeOffsetString), parsed.DateTimeOffset);
+        }
+
+        [Theory]
+        [InlineData("00:30:00")]
+        [InlineData("-10:27:22")]
+        [InlineData("1:1:57:54")]
+        public void ParseTimeSpan(string timeSpanString)
+        {
+            var parsed = CommandLineParser.ParseArgs<Program>("--timespan", timeSpanString);
+            Assert.Equal(TimeSpan.Parse(timeSpanString), parsed.TimeSpan);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(100)]
+        public void ParsesBoolArray(int repeat)
+        {
+            var args = new List<string>();
+            for (var i = 0; i < repeat; i++)
+            {
+                args.Add("--flag");
+            }
+
+            var parsed = CommandLineParser.ParseArgs<Program>(args.ToArray());
+            Assert.NotNull(parsed.Flags);
+            Assert.Equal(repeat, parsed.Flags.Length);
+            Assert.All(parsed.Flags, value => Assert.True(value));
         }
 
         [Theory]

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace McMaster.Extensions.CommandLineUtils.HelpText
 {
@@ -22,6 +23,11 @@ namespace McMaster.Extensions.CommandLineUtils.HelpText
         /// Initializes a new instance of <see cref="DefaultHelpTextGenerator"/>.
         /// </summary>
         protected DefaultHelpTextGenerator() { }
+
+        /// <summary>
+        /// Determines if commands are ordered by name in generated help text
+        /// </summary>
+        public bool SortCommandsByName { get; set; } = true;
 
         /// <inheritdoc />
         public virtual void Generate(CommandLineApplication application, TextWriter output)
@@ -70,7 +76,7 @@ namespace McMaster.Extensions.CommandLineUtils.HelpText
             var firstColumnWidth = 2 + Math.Max(
                 arguments.Count > 0 ? arguments.Max(a => a.Name.Length) : 0,
                 Math.Max(
-                    options.Count > 0 ? options.Max(o => o.Template?.Length ?? 0) : 0,
+                    options.Count > 0 ? options.Max(o => Format(o).Length) : 0,
                     commands.Count > 0 ? commands.Max(c => c.Name?.Length ?? 0) : 0));
 
             GenerateUsage(application, output, arguments, options, commands);
@@ -107,14 +113,16 @@ namespace McMaster.Extensions.CommandLineUtils.HelpText
                 output.Write(stack.Pop());
             }
 
-            if (visibleArguments.Any())
-            {
-                output.Write(" [arguments]");
-            }
-
             if (visibleOptions.Any())
             {
                 output.Write(" [options]");
+            }
+
+            foreach (var argument in visibleArguments)
+            {
+                output.Write(" <");
+                output.Write(argument.Name);
+                output.Write(">");
             }
 
             if (visibleCommands.Any())
@@ -185,7 +193,7 @@ namespace McMaster.Extensions.CommandLineUtils.HelpText
 
                 foreach (var opt in visibleOptions)
                 {
-                    var message = string.Format(outputFormat, opt.Template, opt.Description);
+                    var message = string.Format(outputFormat, Format(opt), opt.Description);
                     message = message.Replace(Environment.NewLine, newLineWithMessagePadding);
 
                     output.Write(message);
@@ -215,7 +223,10 @@ namespace McMaster.Extensions.CommandLineUtils.HelpText
 
                 var newLineWithMessagePadding = Environment.NewLine + new string(' ', firstColumnWidth + 2);
 
-                foreach (var cmd in visibleCommands.OrderBy(c => c.Name))
+                var orderedCommands = SortCommandsByName
+                    ? visibleCommands.OrderBy(c => c.Name).ToList()
+                    : visibleCommands;
+                foreach (var cmd in orderedCommands)
                 {
                     var message = string.Format(outputFormat, cmd.Name, cmd.Description);
                     message = message.Replace(Environment.NewLine, newLineWithMessagePadding);
@@ -244,5 +255,53 @@ namespace McMaster.Extensions.CommandLineUtils.HelpText
             output.Write(application.ExtendedHelpText);
             output.WriteLine();
         }
+
+        /// <summary>
+        /// Generates the template string in the format "-{Symbol}|-{Short}|--{Long} &lt;{Value}&gt;" for display in help text.
+        /// </summary>
+        /// <returns>The template string</returns>
+        protected virtual string Format(CommandOption option)
+        {
+            var sb = new StringBuilder();
+            if (!string.IsNullOrEmpty(option.SymbolName))
+            {
+                sb.Append('-').Append(option.SymbolName);
+            }
+
+            if (!string.IsNullOrEmpty(option.ShortName))
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Append('|');
+                }
+
+                sb.Append('-').Append(option.ShortName);
+            }
+
+            if (!string.IsNullOrEmpty(option.LongName))
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Append('|');
+                }
+
+                sb.Append("--").Append(option.LongName);
+            }
+
+            if (!string.IsNullOrEmpty(option.ValueName) && option.OptionType != CommandOptionType.NoValue)
+            {
+                if (option.OptionType == CommandOptionType.SingleOrNoValue)
+                {
+                    sb.Append("[:<").Append(option.ValueName).Append(">]");
+                }
+                else
+                {
+                    sb.Append(" <").Append(option.ValueName).Append('>');
+                }
+            }
+
+            return sb.ToString();
+        }
+
     }
 }

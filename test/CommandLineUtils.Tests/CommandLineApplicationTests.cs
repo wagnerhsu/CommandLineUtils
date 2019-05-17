@@ -41,6 +41,21 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
         }
 
         [Fact]
+        public void CommandsNamesAreCaseInsensitive()
+        {
+            var app = new CommandLineApplication();
+            var cmd = app.Command("TEST", c => {
+                c.OnExecute(() => 5);
+            });
+            cmd.AddName("TE");
+
+            Assert.Equal(5, app.Execute("test"));
+            Assert.Equal(5, app.Execute("TEST"));
+            Assert.Equal(5, app.Execute("te"));
+            Assert.Equal(5, app.Execute("TE"));
+        }
+
+        [Fact]
         public void RemainingArgsArePassed()
         {
             CommandArgument first = null;
@@ -88,7 +103,7 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             app.Command("sub1", c =>
             {
-                c.AddAlias("s");
+                c.AddName("s");
             });
 
             var ex = Assert.Throws<InvalidOperationException>(() => app.Command("sub1", null));
@@ -105,10 +120,10 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             app.Command("sub1", c =>
             {
-                c.AddAlias("s");
+                c.AddName("s");
             });
 
-            var ex = Assert.Throws<InvalidOperationException>(() => app.Command("sub2", c => c.AddAlias("s")));
+            var ex = Assert.Throws<InvalidOperationException>(() => app.Command("sub2", c => c.AddName("s")));
             Assert.Equal(Strings.DuplicateSubcommandName("s"), ex.Message);
         }
 
@@ -145,6 +160,24 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
             app.Execute("test", "one", "two", "three", "four", "five");
 
             Assert.Equal(new[] { "one", "two", "three", "four", "five" }, argument.Values);
+        }
+
+        [Fact]
+        public void ArgumentsCanBeUsedOnParentCommands()
+        {
+            CommandArgument projArg = null;
+            var app = new CommandLineApplication();
+            var slnArg = app.Argument("SLN_PATH", "Solution file");
+
+            app.Command("sln", c =>
+            {
+                projArg = c.Argument("PROJ_PATH", "Project file");
+            });
+
+            var exitCode = app.Execute("CommandLineUtils.sln", "sln", "Tests.csproj");
+            Assert.Equal(0, exitCode);
+            Assert.Equal("CommandLineUtils.sln", slnArg.Value);
+            Assert.Equal("Tests.csproj", projArg.Value);
         }
 
         [Fact]
@@ -699,7 +732,7 @@ Examples:
                 var outData = outWriter.ToString();
 
                 Assert.True(helpOption.HasValue());
-                Assert.Contains("Usage: lvl1 lvl2 [arguments] [options]", outData);
+                Assert.Contains("Usage: lvl1 lvl2 [options] <lvl-arg>", outData);
 
                 inputs = new[] { helpOptionString };
                 app.Execute(inputs);
@@ -850,6 +883,18 @@ Examples:
             app.Execute("-o2");
             Assert.False(optOne.HasValue(), "Option1 should not be set");
             Assert.True(optTwo.HasValue(), "Option2 should be set");
+        }
+
+        [Fact]
+        public void NonClusteredOptionCanBeSymbolic()
+        {
+            var app = new CommandLineApplication();
+            var option = app.Option("-!|-o|--out", "Output", CommandOptionType.NoValue);
+            var otherOption = app.Option("-o2|--option2", "Option2", CommandOptionType.NoValue);
+
+            app.Execute("-!");
+            Assert.True(option.HasValue(), "Output option should be set");
+            Assert.False(otherOption.HasValue(), "Option2 should not be set");
         }
 
         [Fact]

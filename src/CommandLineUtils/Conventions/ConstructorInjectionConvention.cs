@@ -57,36 +57,61 @@ namespace McMaster.Extensions.CommandLineUtils.Conventions
                 .GetTypeInfo()
                 .GetConstructors(BindingFlags.Public | BindingFlags.Instance);
 
+            var factory = FindMatchedConstructor<TModel>(constructors, context.Application,
+                constructors.Length == 1);
+
+            if (factory != null)
+            {
+                ((CommandLineApplication<TModel>) context.Application).ModelFactory = factory;
+            }
+        }
+
+        private static Func<TModel> FindMatchedConstructor<TModel>(
+            ConstructorInfo[] constructors,
+            IServiceProvider services,
+            bool throwIfNoParameterTypeRegistered = false)
+        {
             if (constructors.Length == 0)
             {
-                throw new InvalidOperationException("Could not find any public constructors on " + typeof(TModel).FullName);
+                return () => throw new InvalidOperationException(Strings.NoAnyPublicConstuctorFound(typeof(TModel)));
             }
 
-            // find the constructor with the most parameters first
-            foreach (var ctorCandidate in constructors.OrderByDescending(c => c.GetParameters().Count()))
+            foreach (var ctorCandidate in constructors.OrderByDescending(c => c.GetParameters().Length))
             {
                 var parameters = ctorCandidate.GetParameters().ToArray();
+                if (parameters.Length == 0)
+                {
+                    return null;
+                }
+
                 var args = new object[parameters.Length];
-                var matched = false;
                 for (var i = 0; i < parameters.Length; i++)
                 {
                     var paramType = parameters[i].ParameterType;
-                    var service = ((IServiceProvider)context.Application).GetService(paramType);
+                    var service = services.GetService(paramType);
                     if (service == null)
                     {
-                        break;
+                        if (!throwIfNoParameterTypeRegistered)
+                        {
+                            goto nextCtor;
+                        }
+
+                        return () =>
+                            throw new InvalidOperationException(
+                                Strings.NoParameterTypeRegistered(ctorCandidate.DeclaringType, paramType));
                     }
+
                     args[i] = service;
-                    matched = i == parameters.Length - 1;
+                    if (i == parameters.Length - 1)
+                    {
+                        return () => (TModel) ctorCandidate.Invoke(args);
+                    }
                 }
 
-                if (matched)
-                {
-                    (context.Application as CommandLineApplication<TModel>).ModelFactory =
-                        () => (TModel)ctorCandidate.Invoke(args);
-                    return;
-                }
+                nextCtor: ;
             }
+
+            return () => throw new InvalidOperationException(Strings.NoMatchedConstructorFound(typeof(TModel)));
         }
     }
 }

@@ -4,6 +4,8 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using McMaster.Extensions.CommandLineUtils.Abstractions;
+using McMaster.Extensions.CommandLineUtils.Errors;
 
 namespace McMaster.Extensions.CommandLineUtils.Conventions
 {
@@ -16,7 +18,8 @@ namespace McMaster.Extensions.CommandLineUtils.Conventions
         /// <inheritdoc />
         public virtual void Apply(ConventionContext context)
         {
-            if (context.ModelType == null)
+            var modelAccessor = context.ModelAccessor;
+            if (context.ModelType == null || modelAccessor == null)
             {
                 return;
             }
@@ -28,6 +31,8 @@ namespace McMaster.Extensions.CommandLineUtils.Conventions
                 var contextArgs = new object[] { context, attribute };
                 foreach (var type in attribute.Types)
                 {
+                    AssertSubcommandIsNotCycled(type, context.Application);
+
                     var impl = s_addSubcommandMethod.MakeGenericMethod(type);
                     try
                     {
@@ -42,6 +47,19 @@ namespace McMaster.Extensions.CommandLineUtils.Conventions
             }
         }
 
+        private void AssertSubcommandIsNotCycled(Type modelType, CommandLineApplication? parentCommand)
+        {
+            while (parentCommand != null)
+            {
+                if (parentCommand is IModelAccessor parentCommandAccessor
+                    && parentCommandAccessor.GetModelType() == modelType)
+                {
+                    throw new SubcommandCycleException(modelType);
+                }
+                parentCommand = parentCommand.Parent;
+            }
+        }
+
         private static readonly MethodInfo s_addSubcommandMethod
             = typeof(SubcommandAttributeConvention).GetRuntimeMethods()
                 .Single(m => m.Name == nameof(AddSubcommandImpl));
@@ -50,7 +68,7 @@ namespace McMaster.Extensions.CommandLineUtils.Conventions
             where TSubCommand : class
         {
 #pragma warning disable 618
-            context.Application.Command<TSubCommand>(subcommand.Name, subcommand.Configure);
+            context.Application.Command<TSubCommand>(subcommand.Name!, subcommand.Configure);
 #pragma warning restore 618
         }
     }

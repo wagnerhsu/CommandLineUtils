@@ -30,18 +30,18 @@ namespace McMaster.Extensions.CommandLineUtils.Abstractions
                 return result;
             });
 
-        public static readonly IValueParser<string> String = ValueParser.Create((_, value, __) => value);
+        public static readonly IValueParser<string?> String = ValueParser.Create((_, value, __) => value);
 
         public static readonly IValueParser<Uri> Uri = ValueParser.Create(
             (_, value, culture) => new Uri(value, UriKind.RelativeOrAbsolute));
 
-        private static FormatException InvalidValueException(string argName, string specifics) =>
+        private static FormatException InvalidValueException(string? argName, string specifics) =>
             new FormatException($"Invalid value specified for {argName}. {specifics}");
 
         private delegate bool NumberParser<T>(string s, NumberStyles styles, IFormatProvider provider, out T result);
 
         private static IValueParser<T> Create<T>(NumberParser<T> parser, NumberStyles styles,
-                                                 Func<string, string, FormatException> errorSelector)
+                                                 Func<string?, string?, FormatException> errorSelector)
         {
             if (parser == null) throw new ArgumentNullException(nameof(parser));
             if (errorSelector == null) throw new ArgumentNullException(nameof(errorSelector));
@@ -58,27 +58,27 @@ namespace McMaster.Extensions.CommandLineUtils.Abstractions
                    (argName, value) => InvalidValueException(argName, $"'{value}' is not a valid floating-point number."));
 
         public static readonly IValueParser<double> Double = FloatingPointParser<double>(double.TryParse);
-        public static readonly IValueParser<float>  Float  = FloatingPointParser<float> (float.TryParse );
+        public static readonly IValueParser<float> Float = FloatingPointParser<float>(float.TryParse);
 
         private static IValueParser<T> IntegerParser<T>(NumberParser<T> parser) =>
             Create(parser, NumberStyles.Integer, (argName, value) => InvalidValueException(argName, $"'{value}' is not a valid number."));
 
         public static readonly IValueParser<short> Int16 = IntegerParser<short>(short.TryParse);
-        public static readonly IValueParser<int>   Int32 = IntegerParser<int>  (int.TryParse  );
-        public static readonly IValueParser<long>  Int64 = IntegerParser<long> (long.TryParse );
+        public static readonly IValueParser<int> Int32 = IntegerParser<int>(int.TryParse);
+        public static readonly IValueParser<long> Int64 = IntegerParser<long>(long.TryParse);
 
         private static IValueParser<T> NonNegativeIntegerParser<T>(NumberParser<T> parser) =>
             Create(parser, NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite,
                    (argName, value) => InvalidValueException(argName, $"'{value}' is not a valid, non-negative number."));
 
-        public static readonly IValueParser<byte>   Byte   = NonNegativeIntegerParser<byte>  (byte.TryParse  );
+        public static readonly IValueParser<byte> Byte = NonNegativeIntegerParser<byte>(byte.TryParse);
         public static readonly IValueParser<ushort> UInt16 = NonNegativeIntegerParser<ushort>(ushort.TryParse);
-        public static readonly IValueParser<uint>   UInt32 = NonNegativeIntegerParser<uint>  (uint.TryParse  );
-        public static readonly IValueParser<ulong>  UInt64 = NonNegativeIntegerParser<ulong> (ulong.TryParse );
+        public static readonly IValueParser<uint> UInt32 = NonNegativeIntegerParser<uint>(uint.TryParse);
+        public static readonly IValueParser<ulong> UInt64 = NonNegativeIntegerParser<ulong>(ulong.TryParse);
 
         private delegate bool DateTimeParser<T>(string s, IFormatProvider provider, DateTimeStyles styles, out T result);
 
-        private static IValueParser<T> Create<T>(DateTimeParser<T> parser, DateTimeStyles styles, Func<string, string, FormatException> errorSelector)
+        private static IValueParser<T> Create<T>(DateTimeParser<T> parser, DateTimeStyles styles, Func<string?, string?, FormatException> errorSelector)
         {
             if (parser == null) throw new ArgumentNullException(nameof(parser));
             if (errorSelector == null) throw new ArgumentNullException(nameof(errorSelector));

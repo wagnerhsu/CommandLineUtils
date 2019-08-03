@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Nate McMaster.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using McMaster.Extensions.CommandLineUtils.Errors;
 using System;
 using System.IO;
 using System.Linq;
@@ -24,13 +25,13 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
             typeof(RemoveCmd))]
         private class Program
         {
-            public object Subcommand { get; set; }
+            public object? Subcommand { get; set; }
         }
 
         [Command("add", "a", "addition")]
         private class AddCmd
         {
-            public object Parent { get; }
+            public object? Parent { get; }
         }
 
         [Command("rm")]
@@ -65,7 +66,7 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             protected override int OnExecute(CommandLineApplication app) => 101;
 
-            public MasterApp Parent { get; }
+            public MasterApp? Parent { get; }
         }
 
         private class Level2Command : CommandBase
@@ -76,7 +77,7 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
             protected override int OnExecute(CommandLineApplication app)
                 => Value.HasValue ? Value.Value : 102;
 
-            public Level1Command Parent { get; }
+            public Level1Command? Parent { get; }
         }
 
         abstract class CommandBase
@@ -84,7 +85,7 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
             [HelpOption("--help")]
             protected bool IsHelp { get; }
 
-            public CommandBase Subcommand { get; set; }
+            public CommandBase? Subcommand { get; set; }
 
             protected abstract int OnExecute(CommandLineApplication app);
         }
@@ -172,11 +173,11 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
         {
             var app = CommandLineParser.ParseArgs<MasterApp>("level1", "--mid", "level2", "--verbose", "--value", "6");
             Assert.IsType<Level1Command>(app.Subcommand);
-            var sub = Assert.IsType<Level2Command>(app.Subcommand.Subcommand);
+            var sub = Assert.IsType<Level2Command>(app.Subcommand?.Subcommand);
             Assert.NotNull(sub.Parent);
-            Assert.NotNull(sub.Parent.Parent);
-            Assert.True(sub.Parent.Mid);
-            Assert.True(sub.Parent.Parent.Verbose);
+            Assert.NotNull(sub.Parent?.Parent);
+            Assert.True(sub.Parent?.Mid);
+            Assert.True(sub.Parent?.Parent?.Verbose);
             Assert.Equal(6, sub.Value);
         }
 
@@ -189,7 +190,7 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
         [Command("LEVEL1")]
         private class Level1DuplicateCmd
-        {}
+        { }
 
         [Fact]
         public void CommandNamesCannotDifferByCaseOnly()
@@ -197,6 +198,38 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
             var ex = Assert.Throws<InvalidOperationException>(
                 () => CommandLineApplication.Execute<DuplicateSubCommands>(new TestConsole(_output)));
             Assert.Equal(Strings.DuplicateSubcommandName("level1"), ex.Message);
+        }
+
+        [Command, Subcommand(typeof(CycledCommand2))]
+        private class CycledCommand1
+        {
+        }
+
+        [Command, Subcommand(typeof(CycledCommand1))]
+        private class CycledCommand2
+        {
+        }
+
+        [Fact]
+        public void ThrowsForCycledSubCommand()
+        {
+            var ex = Assert.Throws<SubcommandCycleException>(
+                () => CommandLineApplication.Execute<CycledCommand1>(new TestConsole(_output)));
+            Assert.Equal(typeof(CycledCommand1), ex.ModelType);
+        }
+
+        [Command, Subcommand(typeof(SelfCycledCommand))]
+        private class SelfCycledCommand
+        {
+
+        }
+
+        [Fact]
+        public void ThrowsForSelfCycledCommand()
+        {
+            var ex = Assert.Throws<SubcommandCycleException>(
+                () => CommandLineApplication.Execute<SelfCycledCommand>(new TestConsole(_output)));
+            Assert.Equal(typeof(SelfCycledCommand), ex.ModelType);
         }
     }
 }

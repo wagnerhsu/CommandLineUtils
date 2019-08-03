@@ -2,6 +2,29 @@
 
 [See unreleased changes][unreleased].
 
+## Unreleased
+
+* Fix [#227] by [@ejball] - ArgumentEscaper should escape empty string
+* PR [#230] by [@IanG] - Attributes for files and directories that must not exist
+* Fix [#221] by [@vpkopylov] - Use Pager for help text option only works on top-level help
+* PR [#239] by [@vpkopylov] - Add check for subcommand cycle
+* Support C# 8.0 and nullable reference types - [#245]
+* Add async methods to CommandLineApplication
+* Fix [#208] - make `CommandLineApplication.ExecuteAsync` actually asynchronous
+* Fix [#153] - add async methods that accept cancellation tokens
+* Fix [#111] - Handle CTRL+C by default
+* Fix [#246] by [@kyle-rader] - Multi-line option descriptions do not indent correctly
+
+[#246]: https://github.com/natemcmaster/CommandLineUtils/issues/246
+[#111]: https://github.com/natemcmaster/CommandLineUtils/issues/111
+[#153]: https://github.com/natemcmaster/CommandLineUtils/issues/153
+[#208]: https://github.com/natemcmaster/CommandLineUtils/issues/208
+[#221]: https://github.com/natemcmaster/CommandLineUtils/issues/221
+[#227]: https://github.com/natemcmaster/CommandLineUtils/issues/227
+[#230]: https://github.com/natemcmaster/CommandLineUtils/pull/230
+[#239]: https://github.com/natemcmaster/CommandLineUtils/pull/239
+[#245]: https://github.com/natemcmaster/CommandLineUtils/pull/245
+
 ## [v2.3.4]
 
 Bugs fixed:
@@ -332,10 +355,13 @@ Other:
 [@couven92]: https://github.com/couven92
 [@demosdemon]: https://github.com/demosdemon
 [@EricStG]: https://github.com/EricStG
+[@ejball]: https://github.com/ejball
 [@handcraftedsource]: https://github.com/handcraftedsource
+[@IanG]: https://github.com/IanG
 [@jcaillon]: https://github.com/jcaillon
 [@jerriep]: https://github.com/jerriep
 [@kant2002]: https://github.com/kant2002
+[@kyle-rader]: https://github.com/kyle-rader
 [@lucastheisen]: https://github.com/lucastheisen
 [@liamdawson]: https://github.com/liamdawson
 [@lvermeulen]: https://github.com/lvermeulen
@@ -347,6 +373,7 @@ Other:
 [@sebastienros]: https://github.com/sebastienros
 [@SteveBenz]: https://github.com/SteveBenz
 [@TheConstructor]: https://github.com/TheConstructor
+[@vpkopylov]: https://github.com/vpkopylov
 
 [unreleased]: https://github.com/natemcmaster/CommandLineUtils/compare/v2.3.4...HEAD
 [v2.3.4]: https://github.com/natemcmaster/CommandLineUtils/compare/v2.3.3...v2.3.4

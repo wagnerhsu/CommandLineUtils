@@ -5,6 +5,7 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using McMaster.Extensions.CommandLineUtils.Abstractions;
 
 namespace McMaster.Extensions.CommandLineUtils
@@ -16,7 +17,7 @@ namespace McMaster.Extensions.CommandLineUtils
             var setter = prop.GetSetMethod(nonPublic: true);
             if (setter != null)
             {
-                return (obj, value) => setter.Invoke(obj, new object[] { value });
+                return (obj, value) => setter.Invoke(obj, new object?[] { value });
             }
             else
             {
@@ -55,7 +56,7 @@ namespace McMaster.Extensions.CommandLineUtils
             return type.GetTypeInfo().GetMembers(binding);
         }
 
-        public static object[] BindParameters(MethodInfo method, CommandLineApplication command)
+        public static object[] BindParameters(MethodInfo method, CommandLineApplication command, CancellationToken cancellationToken)
         {
             var methodParams = method.GetParameters();
             var arguments = new object[methodParams.Length];
@@ -80,20 +81,21 @@ namespace McMaster.Extensions.CommandLineUtils
                 {
                     arguments[i] = command._context;
                 }
+                else if (typeof(CancellationToken) == methodParam.ParameterType && cancellationToken != CancellationToken.None)
+                {
+                    arguments[i] = cancellationToken;
+                }
                 else
                 {
-                    arguments[i]= command.AdditionalServices?.GetService(methodParam.ParameterType);
-                    if (arguments[i] == null)
-                    {
-                        throw new InvalidOperationException(Strings.UnsupportedParameterTypeOnMethod(method.Name, methodParam));
-                    }
+                    object? service = command.AdditionalServices?.GetService(methodParam.ParameterType);
+                    arguments[i] = service ?? throw new InvalidOperationException(Strings.UnsupportedParameterTypeOnMethod(method.Name, methodParam));
                 }
             }
 
             return arguments;
         }
 
-        public static bool IsNullableType(TypeInfo typeInfo, out Type wrappedType)
+        public static bool IsNullableType(TypeInfo typeInfo, out Type? wrappedType)
         {
             var result = typeInfo.IsGenericType && typeInfo.GetGenericTypeDefinition() == typeof(Nullable<>);
             wrappedType = result ? typeInfo.GetGenericArguments().First() : null;

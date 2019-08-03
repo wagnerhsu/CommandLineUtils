@@ -18,11 +18,15 @@
     <DebugType>portable</DebugType>
     <IsPackable>false</IsPackable>
     <IncludeSymbols>true</IncludeSymbols>
-    <IncludeSource>true</IncludeSource>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <PackageIconUrl>https://natemcmaster.github.io/CommandLineUtils/logo.png</PackageIconUrl>
     <NoPackageAnalysis>true</NoPackageAnalysis>
-    <LangVersion>7.2</LangVersion>
+    <SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);1591</WarningsNotAsErrors>
+    <LangVersion>8.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <!-- Some previews of .NET Core 3 don't have the rename yet -->
+    <NullableContextOptions>enable</NullableContextOptions>
     <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)src\StrongName.snk</AssemblyOriginatorKeyFile>
     <SignAssembly>true</SignAssembly>
     <AzureKeyVaultUrl>https://nmcmaster.vault.azure.net</AzureKeyVaultUrl>
@@ -31,14 +35,14 @@
     <CodeSignCertName>DigiCertCodeSign</CodeSignCertName>
 
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <GenerateFullPaths Condition="'$(VSCODE_CWD)' != ''">true</GenerateFullPaths>
+    <GenerateFullPaths Condition="'$(TERM_PROGRAM)' == 'vscode'">true</GenerateFullPaths>
     <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory).build\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
     <BaseOutputPath>$(MSBuildThisFileDirectory).build\bin\$(MSBuildProjectName)\</BaseOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- For x-plat develpment. Workaround for https://github.com/dotnet/sdk/issues/335 -->
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.0-alpha-004" PrivateAssets="all" />
+    <!-- For x-plat development. Workaround for https://github.com/dotnet/sdk/issues/335 -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.0-preview.2" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

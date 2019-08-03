@@ -8,7 +8,9 @@ using System.ComponentModel.DataAnnotations;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using McMaster.Extensions.CommandLineUtils.Abstractions;
 using McMaster.Extensions.CommandLineUtils.Conventions;
@@ -25,15 +27,32 @@ namespace McMaster.Extensions.CommandLineUtils
     {
         private const int HelpExitCode = 0;
         internal const int ValidationErrorExitCode = 1;
+        private static readonly int ExitCodeOperationCanceled;
 
-        private List<Action<ParseResult>> _onParsingComplete;
+        static CommandLineApplication()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // values from https://www.febooti.com/products/automation-workshop/online-help/events/run-dos-cmd-command/exit-codes/
+                ExitCodeOperationCanceled = unchecked((int)0xC000013A);
+            }
+            else
+            {
+                // Match Process.ExitCode which uses 128 + signo.
+                ExitCodeOperationCanceled = 130; // SIGINT
+            }
+        }
+
+        private static Task<int> DefaultAction(CancellationToken ct) => Task.FromResult(0);
+        private Func<CancellationToken, Task<int>> _handler;
+        private List<Action<ParseResult>>? _onParsingComplete;
         internal readonly Dictionary<string, PropertyInfo> _shortOptions = new Dictionary<string, PropertyInfo>();
         internal readonly Dictionary<string, PropertyInfo> _longOptions = new Dictionary<string, PropertyInfo>();
         private readonly HashSet<string> _names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        private string _primaryCommandName;
+        private string? _primaryCommandName;
         internal CommandLineContext _context;
         private IHelpTextGenerator _helpTextGenerator;
-        private CommandOption _optionHelp;
+        private CommandOption? _optionHelp;
         private readonly Lazy<IServiceProvider> _services;
         private readonly ConventionContext _conventionContext;
         private readonly List<IConvention> _conventions = new List<IConvention>();
@@ -86,7 +105,8 @@ namespace McMaster.Extensions.CommandLineUtils
             }
         }
 
-        internal CommandLineApplication(CommandLineApplication parent,
+        internal CommandLineApplication(
+            CommandLineApplication? parent,
             IHelpTextGenerator helpTextGenerator,
             CommandLineContext context,
             bool throwOnUnexpectedArg)
@@ -98,13 +118,16 @@ namespace McMaster.Extensions.CommandLineUtils
             Arguments = new List<CommandArgument>();
             Commands = new List<CommandLineApplication>();
             RemainingArguments = new List<string>();
-            HelpTextGenerator = helpTextGenerator;
-            Invoke = () => 0;
-            ValidationErrorHandler = DefaultValidationErrorHandler;
+            _helpTextGenerator = helpTextGenerator ?? throw new ArgumentNullException(nameof(helpTextGenerator));
+            _handler = DefaultAction;
+            _validationErrorHandler = DefaultValidationErrorHandler;
+            Out = context.Console.Out;
+            Error = context.Console.Error;
             SetContext(context);
             _services = new Lazy<IServiceProvider>(() => new ServiceProvider(this));
             ValueParsers = parent?.ValueParsers ?? new ValueParserProvider();
             _clusterOptions = parent?._clusterOptions;
+            UsePagerForHelpText = parent?.UsePagerForHelpText ?? true;
 
             _conventionContext = CreateConventionContext();
 
@@ -120,7 +143,7 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <summary>
         /// Defaults to null. A link to the parent command if this is instance is a subcommand.
         /// </summary>
-        public CommandLineApplication Parent { get; set; }
+        public CommandLineApplication? Parent { get; set; }
 
         /// <summary>
         /// The help text generator to use.
@@ -134,7 +157,7 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <summary>
         /// The short name of the command. When this is a subcommand, it is the name of the word used to invoke the subcommand.
         /// </summary>
-        public string Name
+        public string? Name
         {
             get => _primaryCommandName;
             set
@@ -147,12 +170,12 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <summary>
         /// The full name of the command to show in the help text.
         /// </summary>
-        public string FullName { get; set; }
+        public string? FullName { get; set; }
 
         /// <summary>
         /// A description of the command.
         /// </summary>
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         /// <summary>
         /// Determines if this command appears in generated help text.
@@ -162,7 +185,7 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <summary>
         /// Additional text that appears at the bottom of generated help text.
         /// </summary>
-        public string ExtendedHelpText { get; set; }
+        public string? ExtendedHelpText { get; set; }
 
         /// <summary>
         /// Available command-line options on this command. Use <see cref="GetOptions"/> to get all available options, which may include inherited options.
@@ -172,7 +195,7 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <summary>
         /// Whether a Pager should be used to display help text.
         /// </summary>
-        public bool UsePagerForHelpText { get; set; } = true;
+        public bool UsePagerForHelpText { get; set; }
 
         /// <summary>
         /// All names by which the command can be referenced. This includes <see cref="Name"/> and an aliases added in <see cref="AddName"/>.
@@ -196,7 +219,7 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <summary>
         /// The option used to determine if help text should be displayed. This is set by calling <see cref="HelpOption(string)"/>.
         /// </summary>
-        public CommandOption OptionHelp
+        public CommandOption? OptionHelp
         {
             get
             {
@@ -217,7 +240,7 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <summary>
         /// The options used to determine if the command version should be displayed. This is set by calling <see cref="VersionOption(string, Func{string}, Func{string})"/>.
         /// </summary>
-        public CommandOption OptionVersion { get; internal set; }
+        public CommandOption? OptionVersion { get; internal set; }
 
         /// <summary>
         /// Required command-line arguments.
@@ -242,19 +265,34 @@ namespace McMaster.Extensions.CommandLineUtils
         public bool IsShowingInformation { get; protected set; }
 
         /// <summary>
+        /// <para>
+        /// This property has been marked as obsolete and will be removed in a future version.
+        /// The recommended replacement for setting this property is <see cref="OnExecute(Func{int})" />
+        /// and for invoking this property is <see cref="Execute(string[])" />.
+        /// </para>
+        /// <para>
         /// The action to call when this command is matched and <see cref="IsShowingInformation"/> is <c>false</c>.
+        /// </para>
         /// </summary>
-        public Func<int> Invoke { get; set; }
+        [Obsolete("This property has been marked as obsolete and will be removed in a future version. " +
+            "The recommended replacement for setting this property is OnExecute(Func<int>) " +
+            "and for invoking this property is Execute(string[] args).")]
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public Func<int> Invoke
+        {
+            get => () => _handler(default).GetAwaiter().GetResult();
+            set => _handler = _ => Task.FromResult(value());
+        }
 
         /// <summary>
         /// The long-form of the version to display in generated help text.
         /// </summary>
-        public Func<string> LongVersionGetter { get; set; }
+        public Func<string?>? LongVersionGetter { get; set; }
 
         /// <summary>
         /// The short-form of the version to display in generated help text.
         /// </summary>
-        public Func<string> ShortVersionGetter { get; set; }
+        public Func<string?>? ShortVersionGetter { get; set; }
 
         /// <summary>
         /// Subcommands.
@@ -315,9 +353,7 @@ namespace McMaster.Extensions.CommandLineUtils
         {
             // unless explicitly set, use the value of cluster options from the parent command
             // or default to true if this is the root command
-            get => _clusterOptions.HasValue
-                ? _clusterOptions.Value
-                : Parent == null || Parent.ClusterOptions;
+            get => _clusterOptions ?? Parent == null || Parent.ClusterOptions;
             set => _clusterOptions = value;
         }
 
@@ -413,7 +449,7 @@ namespace McMaster.Extensions.CommandLineUtils
             Commands.Add(subcommand);
         }
 
-        private void AssertCommandNameIsUnique(string name, CommandLineApplication skip)
+        private void AssertCommandNameIsUnique(string? name, CommandLineApplication? commandToIgnore)
         {
             if (string.IsNullOrEmpty(name))
             {
@@ -422,7 +458,7 @@ namespace McMaster.Extensions.CommandLineUtils
 
             foreach (var cmd in Commands)
             {
-                if (ReferenceEquals(cmd, skip))
+                if (ReferenceEquals(cmd, commandToIgnore))
                 {
                     continue;
                 }
@@ -632,16 +668,31 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <param name="invoke"></param>
         public void OnExecute(Func<int> invoke)
         {
-            Invoke = invoke;
+            _handler = _ => Task.FromResult(invoke());
         }
+
+        /// <summary>
+        /// <para>
+        /// This method is obsolete and will be removed in a future version.
+        /// The recommended alternative is <see cref="OnExecuteAsync" />.
+        /// </para>
+        /// <para>
+        /// Defines an asynchronous callback.
+        /// </para>
+        /// </summary>
+        /// <param name="invoke"></param>
+        [Obsolete("This method is obsolete and will be removed in a future version. " +
+                  "The recommended replacement is .OnExecuteAsync()")]
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public void OnExecute(Func<Task<int>> invoke) => OnExecuteAsync(_ => invoke());
 
         /// <summary>
         /// Defines an asynchronous callback.
         /// </summary>
         /// <param name="invoke"></param>
-        public void OnExecute(Func<Task<int>> invoke)
+        public void OnExecuteAsync(Func<CancellationToken, Task<int>> invoke)
         {
-            Invoke = () => invoke().GetAwaiter().GetResult();
+            _handler = invoke;
         }
 
         /// <summary>
@@ -655,7 +706,7 @@ namespace McMaster.Extensions.CommandLineUtils
                 throw new ArgumentNullException(nameof(action));
             }
 
-            _onParsingComplete = _onParsingComplete ?? new List<Action<ParseResult>>();
+            _onParsingComplete ??= new List<Action<ParseResult>>();
             _onParsingComplete.Add(action);
         }
 
@@ -666,7 +717,7 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <returns>The result of parsing.</returns>
         public ParseResult Parse(params string[] args)
         {
-            args = args ?? new string[0];
+            args ??= Util.EmptyArray<string>();
 
             var processor = new CommandLineProcessor(this, args);
             var result = processor.Process();
@@ -747,6 +798,29 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <returns>The return code from <see cref="Invoke"/>.</returns>
         public int Execute(params string[] args)
         {
+            return ExecuteAsync(args).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Parses an array of strings using <see cref="Parse(string[])"/>.
+        /// <para>
+        /// If <see cref="OptionHelp"/> was matched, the generated help text is displayed in command line output.
+        /// </para>
+        /// <para>
+        /// If <see cref="OptionVersion"/> was matched, the generated version info is displayed in command line output.
+        /// </para>
+        /// <para>
+        /// If there were any validation errors produced from <see cref="GetValidationResult"/>, <see cref="ValidationErrorHandler"/> is invoked.
+        /// </para>
+        /// <para>
+        /// If the parse result matches this command, <see cref="Invoke"/> will be invoked.
+        /// </para>
+        /// </summary>
+        /// <param name="args"></param>
+        /// <param name="cancellationToken"></param>
+        /// <returns>The return code from <see cref="Invoke"/>.</returns>
+        public async Task<int> ExecuteAsync(string[] args, CancellationToken cancellationToken = default)
+        {
             var parseResult = Parse(args);
             var command = parseResult.SelectedCommand;
 
@@ -761,7 +835,46 @@ namespace McMaster.Extensions.CommandLineUtils
                 return command.ValidationErrorHandler(validationResult);
             }
 
-            return command.Invoke();
+            var handlerCompleted = new ManualResetEventSlim(initialState: false);
+            var handlerCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+            void cancelHandler(object o, ConsoleCancelEventArgs e)
+            {
+                handlerCancellationTokenSource.Cancel();
+                handlerCompleted.Wait();
+            }
+
+#if !NETSTANDARD1_6
+            void unloadingHandler(object o, EventArgs e)
+            {
+                handlerCancellationTokenSource.Cancel();
+                handlerCompleted.Wait();
+            }
+#endif
+
+            try
+            {
+                // blocks .NET's CTRL+C handler from completing until after async completions are done
+                _context.Console.CancelKeyPress += cancelHandler;
+#if !NETSTANDARD1_6
+                // blocks .NET's process unloading from completing until after async completions are done
+                AppDomain.CurrentDomain.DomainUnload += unloadingHandler;
+#endif
+
+                return await command._handler(handlerCancellationTokenSource.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return ExitCodeOperationCanceled;
+            }
+            finally
+            {
+                _context.Console.CancelKeyPress -= cancelHandler;
+#if !NETSTANDARD1_6
+                AppDomain.CurrentDomain.DomainUnload -= unloadingHandler;
+#endif
+                handlerCompleted.Set();
+            }
         }
 
         /// <summary>
@@ -795,8 +908,8 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <param name="longFormVersion"></param>
         /// <returns></returns>
         public CommandOption VersionOption(string template,
-            string shortFormVersion,
-            string longFormVersion = null)
+            string? shortFormVersion,
+            string? longFormVersion = null)
         {
             if (longFormVersion == null)
             {
@@ -816,8 +929,8 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <param name="longFormVersionGetter"></param>
         /// <returns></returns>
         public CommandOption VersionOption(string template,
-            Func<string> shortFormVersionGetter,
-            Func<string> longFormVersionGetter = null)
+            Func<string?>? shortFormVersionGetter,
+            Func<string?>? longFormVersionGetter = null)
         {
             // Version option is special because we stop parsing once we see it
             // So we store it separately for further use
@@ -856,17 +969,17 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <param name="usePager">Use a console pager to display help text, if possible.</param>
         public void ShowHelp(bool usePager)
         {
-            for (var cmd = this; cmd != null; cmd = cmd.Parent)
+            CommandLineApplication? cmd = this;
+            while (cmd != null)
             {
                 cmd.IsShowingInformation = true;
+                cmd = cmd.Parent;
             }
 
             if (usePager && ReferenceEquals(Out, _context.Console.Out))
             {
-                using (var pager = new Pager(_context.Console))
-                {
-                    _helpTextGenerator.Generate(this, pager.Writer);
-                }
+                using var pager = new Pager(_context.Console);
+                _helpTextGenerator.Generate(this, pager.Writer);
             }
             else
             {
@@ -879,10 +992,10 @@ namespace McMaster.Extensions.CommandLineUtils
         /// The recommended replacement is <see cref="ShowHelp()" />.
         /// </summary>
         /// <param name="commandName">The subcommand for which to show help. Leave null to show for the current command.</param>
-        [Obsolete("This method has been marked as obsolete and will be removed in a future version." +
+        [Obsolete("This method has been marked as obsolete and will be removed in a future version. " +
             "The recommended replacement is ShowHelp()")]
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public void ShowHelp(string commandName = null)
+        public void ShowHelp(string? commandName = null)
         {
             if (commandName == null)
             {
@@ -915,7 +1028,8 @@ namespace McMaster.Extensions.CommandLineUtils
         public virtual string GetHelpText()
         {
             var sb = new StringBuilder();
-            _helpTextGenerator.Generate(this, new StringWriter(sb));
+            using var writer = new StringWriter(sb);
+            _helpTextGenerator.Generate(this, writer);
             return sb.ToString();
         }
 
@@ -925,10 +1039,10 @@ namespace McMaster.Extensions.CommandLineUtils
         /// </summary>
         /// <param name="commandName"></param>
         /// <returns></returns>
-        [Obsolete("This method has been marked as obsolete and will be removed in a future version." +
+        [Obsolete("This method has been marked as obsolete and will be removed in a future version. " +
             "The recommended replacement is GetHelpText()")]
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public virtual string GetHelpText(string commandName = null)
+        public virtual string GetHelpText(string? commandName = null)
         {
             CommandLineApplication target;
 
@@ -955,9 +1069,11 @@ namespace McMaster.Extensions.CommandLineUtils
         /// </summary>
         public void ShowVersion()
         {
-            for (var cmd = this; cmd != null; cmd = cmd.Parent)
+            CommandLineApplication? cmd = this;
+            while (cmd != null)
             {
                 cmd.IsShowingInformation = true;
+                cmd = cmd.Parent;
             }
 
             Out.Write(GetVersionText());
@@ -976,7 +1092,10 @@ namespace McMaster.Extensions.CommandLineUtils
                 sb.AppendLine(FullName);
             }
 
-            sb.AppendLine(LongVersionGetter());
+            if (LongVersionGetter != null)
+            {
+                sb.AppendLine(LongVersionGetter());
+            }
             return sb.ToString();
         }
 
@@ -986,7 +1105,7 @@ namespace McMaster.Extensions.CommandLineUtils
         /// <returns></returns>
         public virtual string GetFullNameAndVersion()
         {
-            var items = new List<string>
+            var items = new List<string?>
             {
                 FullName,
                 ShortVersionGetter?.Invoke()
@@ -1043,7 +1162,7 @@ namespace McMaster.Extensions.CommandLineUtils
             }
         }
 
-        private IConventionBuilder _builder;
+        private IConventionBuilder? _builder;
 
         /// <summary>
         /// Gets a builder that can be used to apply conventions to
@@ -1096,7 +1215,7 @@ namespace McMaster.Extensions.CommandLineUtils
             }
         }
 
-        internal IServiceProvider AdditionalServices { get; set; }
+        internal IServiceProvider? AdditionalServices { get; set; }
 
         object IServiceProvider.GetService(Type serviceType) => _services.Value.GetService(serviceType);
 
@@ -1109,7 +1228,7 @@ namespace McMaster.Extensions.CommandLineUtils
                 _parent = parent;
             }
 
-            public object GetService(Type serviceType)
+            public object? GetService(Type serviceType)
             {
                 if (typeof(object) == serviceType)
                 {

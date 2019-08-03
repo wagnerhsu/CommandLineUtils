@@ -5,6 +5,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Xunit;
 using Xunit.Abstractions;
@@ -44,7 +45,8 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
         public void CommandsNamesAreCaseInsensitive()
         {
             var app = new CommandLineApplication();
-            var cmd = app.Command("TEST", c => {
+            var cmd = app.Command("TEST", c =>
+            {
                 c.OnExecute(() => 5);
             });
             cmd.AddName("TE");
@@ -58,8 +60,8 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
         [Fact]
         public void RemainingArgsArePassed()
         {
-            CommandArgument first = null;
-            CommandArgument second = null;
+            CommandArgument? first = null;
+            CommandArgument? second = null;
 
             var app = new CommandLineApplication();
 
@@ -72,15 +74,15 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             app.Execute("test", "one", "two");
 
-            Assert.Equal("one", first.Value);
-            Assert.Equal("two", second.Value);
+            Assert.Equal("one", first?.Value);
+            Assert.Equal("two", second?.Value);
         }
 
         [Fact]
         public void ExtraArgumentCausesException()
         {
-            CommandArgument first = null;
-            CommandArgument second = null;
+            CommandArgument? first = null;
+            CommandArgument? second = null;
 
             var app = new CommandLineApplication();
 
@@ -106,10 +108,10 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
                 c.AddName("s");
             });
 
-            var ex = Assert.Throws<InvalidOperationException>(() => app.Command("sub1", null));
+            var ex = Assert.Throws<InvalidOperationException>(() => app.Command("sub1", _ => { }));
             Assert.Equal(Strings.DuplicateSubcommandName("sub1"), ex.Message);
 
-            ex = Assert.Throws<InvalidOperationException>(() => app.Command("s", null));
+            ex = Assert.Throws<InvalidOperationException>(() => app.Command("s", _ => { }));
             Assert.Equal(Strings.DuplicateSubcommandName("s"), ex.Message);
         }
 
@@ -147,7 +149,7 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
         [Fact]
         public void MultipleValuesArgumentConsumesAllArgumentValues()
         {
-            CommandArgument argument = null;
+            CommandArgument? argument = null;
 
             var app = new CommandLineApplication();
 
@@ -159,13 +161,13 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             app.Execute("test", "one", "two", "three", "four", "five");
 
-            Assert.Equal(new[] { "one", "two", "three", "four", "five" }, argument.Values);
+            Assert.Equal(new[] { "one", "two", "three", "four", "five" }, argument?.Values);
         }
 
         [Fact]
         public void ArgumentsCanBeUsedOnParentCommands()
         {
-            CommandArgument projArg = null;
+            CommandArgument? projArg = null;
             var app = new CommandLineApplication();
             var slnArg = app.Argument("SLN_PATH", "Solution file");
 
@@ -177,15 +179,15 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
             var exitCode = app.Execute("CommandLineUtils.sln", "sln", "Tests.csproj");
             Assert.Equal(0, exitCode);
             Assert.Equal("CommandLineUtils.sln", slnArg.Value);
-            Assert.Equal("Tests.csproj", projArg.Value);
+            Assert.Equal("Tests.csproj", projArg?.Value);
         }
 
         [Fact]
         public void MultipleValuesArgumentConsumesAllRemainingArgumentValues()
         {
-            CommandArgument first = null;
-            CommandArgument second = null;
-            CommandArgument third = null;
+            CommandArgument? first = null;
+            CommandArgument? second = null;
+            CommandArgument? third = null;
 
             var app = new CommandLineApplication();
 
@@ -199,9 +201,9 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             app.Execute("test", "one", "two", "three", "four", "five");
 
-            Assert.Equal("one", first.Value);
-            Assert.Equal("two", second.Value);
-            Assert.Equal(new[] { "three", "four", "five" }, third.Values);
+            Assert.Equal("one", first?.Value);
+            Assert.Equal("two", second?.Value);
+            Assert.Equal(new[] { "three", "four", "five" }, third?.Values);
         }
 
         [Fact]
@@ -218,8 +220,8 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
         [Fact]
         public void OptionSwitchMayBeProvided()
         {
-            CommandOption first = null;
-            CommandOption second = null;
+            CommandOption? first = null;
+            CommandOption? second = null;
 
             var app = new CommandLineApplication();
 
@@ -232,14 +234,14 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             app.Execute("test", "--first", "one", "--second", "two");
 
-            Assert.Equal("one", first.Values[0]);
-            Assert.Equal("two", second.Values[0]);
+            Assert.Equal("one", first?.Values[0]);
+            Assert.Equal("two", second?.Values[0]);
         }
 
         [Fact]
         public void OptionValueMustBeProvided()
         {
-            CommandOption first = null;
+            CommandOption? first = null;
 
             var app = new CommandLineApplication();
 
@@ -251,14 +253,14 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             var ex = Assert.ThrowsAny<CommandParsingException>(() => app.Execute("test", "--first"));
 
-            Assert.Contains($"Missing value for option '{first.LongName}'", ex.Message);
+            Assert.Contains($"Missing value for option '{first?.LongName}'", ex.Message);
         }
 
         [Fact]
         public void ValuesMayBeAttachedToSwitch()
         {
-            CommandOption first = null;
-            CommandOption second = null;
+            CommandOption? first = null;
+            CommandOption? second = null;
 
             var app = new CommandLineApplication();
 
@@ -271,15 +273,15 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             app.Execute("test", "--first=one", "--second:two");
 
-            Assert.Equal("one", first.Values[0]);
-            Assert.Equal("two", second.Values[0]);
+            Assert.Equal("one", first?.Values[0]);
+            Assert.Equal("two", second?.Values[0]);
         }
 
         [Fact]
         public void ShortNamesMayBeDefined()
         {
-            CommandOption first = null;
-            CommandOption second = null;
+            CommandOption? first = null;
+            CommandOption? second = null;
 
             var app = new CommandLineApplication();
 
@@ -292,8 +294,8 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             app.Execute("test", "-1=one", "-2", "two");
 
-            Assert.Equal("one", first.Values[0]);
-            Assert.Equal("two", second.Values[0]);
+            Assert.Equal("one", first?.Values[0]);
+            Assert.Equal("two", second?.Values[0]);
         }
 
         [Fact]
@@ -432,7 +434,7 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
         public void ThrowsExceptionOnUnexpectedOptionBeforeValidSubcommandByDefault()
         {
             var unexpectedOption = "--unexpected";
-            CommandLineApplication subCmd = null;
+            CommandLineApplication? subCmd = null;
             var app = new CommandLineApplication();
 
             app.Command("k", c =>
@@ -449,7 +451,7 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
         public void AllowNoThrowBehaviorOnUnexpectedOptionAfterSubcommand()
         {
             var unexpectedOption = "--unexpected";
-            CommandLineApplication subCmd = null;
+            CommandLineApplication? subCmd = null;
             var app = new CommandLineApplication();
 
             var testCmd = app.Command("k", c =>
@@ -461,7 +463,7 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
             // (does not throw)
             app.Execute("k", "run", unexpectedOption);
             Assert.Empty(testCmd.RemainingArguments);
-            var arg = Assert.Single(subCmd.RemainingArguments);
+            var arg = Assert.Single(subCmd?.RemainingArguments);
             Assert.Equal(unexpectedOption, arg);
         }
 
@@ -470,7 +472,7 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
         {
             var app = new CommandLineApplication();
             var optionA = app.Option("-a|--option-a", "", CommandOptionType.SingleValue, inherited: true);
-            string optionAValue = null;
+            string? optionAValue = null;
 
             var optionB = app.Option("-b", "", CommandOptionType.SingleValue, inherited: false);
 
@@ -512,7 +514,7 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
         {
             var app = new CommandLineApplication();
             var top = app.Option("-a|--always", "Top-level", CommandOptionType.SingleValue, inherited: false);
-            CommandOption nested = null;
+            CommandOption? nested = null;
             app.Command("subcmd", c =>
             {
                 nested = c.Option("-a|--ask", "Nested", CommandOptionType.SingleValue);
@@ -520,22 +522,22 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
 
             app.Execute("-a", "top");
             Assert.Equal("top", top.Value());
-            Assert.Null(nested.Value());
+            Assert.Null(nested?.Value());
 
             top.Values.Clear();
 
             app.Execute("subcmd", "-a", "nested");
             Assert.Null(top.Value());
-            Assert.Equal("nested", nested.Value());
+            Assert.Equal("nested", nested?.Value());
         }
 
         [Fact]
         public void NestedInheritedOptions()
         {
-            string globalOptionValue = null, nest1OptionValue = null, nest2OptionValue = null;
+            string? globalOptionValue = null, nest1OptionValue = null, nest2OptionValue = null;
 
             var app = new CommandLineApplication();
-            CommandLineApplication subcmd2 = null;
+            CommandLineApplication? subcmd2 = null;
             var g = app.Option("-g|--global", "Global option", CommandOptionType.SingleValue, inherited: true);
             var subcmd1 = app.Command("lvl1", s1 =>
             {
@@ -562,9 +564,9 @@ namespace McMaster.Extensions.CommandLineUtils.Tests
             Assert.Contains(subcmd1.GetOptions(), o => o.LongName == "nest1");
             Assert.Contains(subcmd1.GetOptions(), o => o.LongName == "global");
 
-            Assert.Contains(subcmd2.GetOptions(), o => o.LongName == "nest2");
-            Assert.Contains(subcmd2.GetOptions(), o => o.LongName == "nest1");
-            Assert.Contains(subcmd2.GetOptions(), o => o.LongName == "global");
+            Assert.Contains(subcmd2?.GetOptions(), o => o.LongName == "nest2");
+            Assert.Contains(subcmd2?.GetOptions(), o => o.LongName == "nest1");
+            Assert.Contains(subcmd2?.GetOptions(), o => o.LongName == "global");
 
             Assert.ThrowsAny<CommandParsingException>(() => app.Execute("--nest2", "N2", "--nest1", "N1", "-g", "G"));
             Assert.ThrowsAny<CommandParsingException>(() => app.Execute("lvl1", "--nest2", "N2", "--nest1", "N1", "-g", "G"));
@@ -675,8 +677,8 @@ Examples:
         [Theory]
         [InlineData(new[] { "--version", "--flag" }, "1.0")]
         [InlineData(new[] { "-V", "-f" }, "1.0")]
-        [InlineData(new[] { "--help", "--flag" }, "some flag")]
-        [InlineData(new[] { "-h", "-f" }, "some flag")]
+        [InlineData(new[] { "--help", "--flag" }, "some_flag")]
+        [InlineData(new[] { "-h", "-f" }, "some_flag")]
         public void HelpAndVersionOptionStopProcessing(string[] input, string expectedOutData)
         {
             using (var outWriter = new StringWriter())
@@ -684,7 +686,7 @@ Examples:
                 var app = new CommandLineApplication { Out = outWriter };
                 app.HelpOption("-h --help");
                 app.VersionOption("-V --version", "1", "1.0");
-                var optFlag = app.Option("-f |--flag", "some flag", CommandOptionType.NoValue);
+                var optFlag = app.Option("-f |--flag", "some_flag", CommandOptionType.NoValue);
 
                 app.Execute(input);
 
@@ -784,6 +786,16 @@ Examples:
             Assert.Same(help, app.OptionHelp);
             Assert.NotSame(help, sub1.OptionHelp);
             Assert.NotSame(help, sub2.OptionHelp);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void UsePagerForHelpTextPropertyIsInherited(bool usePagerForHelpText)
+        {
+            var app = new CommandLineApplication { UsePagerForHelpText = usePagerForHelpText };
+            var sub = app.Command("sub", _ => { });
+            Assert.Equal(usePagerForHelpText, sub.UsePagerForHelpText);
         }
 
         [Fact]
@@ -937,7 +949,7 @@ Examples:
         public void CommandNamesMatchingIsCaseInsensitive()
         {
             var app = new CommandLineApplication(throwOnUnexpectedArg: false);
-            var cmd = app.Command("CMD1", null);
+            var cmd = app.Command("CMD1", _ => { });
 
             Assert.Same(cmd, app.Parse("CMD1").SelectedCommand);
             Assert.Same(cmd, app.Parse("cmd1").SelectedCommand);
@@ -949,7 +961,7 @@ Examples:
         {
             var app = new CommandLineApplication();
             var tcs = new TaskCompletionSource<int>();
-            app.OnExecute(async () =>
+            app.OnExecuteAsync(async ct =>
             {
                 var val = await tcs.Task.ConfigureAwait(false);
                 if (val > 0)
@@ -964,6 +976,24 @@ Examples:
             Assert.Same(delay, finished);
             tcs.TrySetResult(1);
             await Assert.ThrowsAsync<InvalidOperationException>(async () => await run);
+        }
+
+        [Fact]
+        public async Task OperationCanceledReturnsExpectedOsCode()
+        {
+            var expectedCode = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? unchecked((int)0xC000013A)
+                : 130;
+            var testConsole = new TestConsole(_output);
+            var app = new CommandLineApplication(testConsole);
+            app.OnExecuteAsync(async ct =>
+            {
+                await Task.Delay(-1, ct);
+            });
+            var executeTask = app.ExecuteAsync(Array.Empty<string>());
+            testConsole.RaiseCancelKeyPress();
+            var exitCode = await executeTask;
+            Assert.Equal(expectedCode, exitCode);
         }
     }
 }

@@ -51,7 +51,7 @@ namespace McMaster.Extensions.Hosting.CommandLine.Tests
             var convention = new Mock<IConvention>();
             convention.Setup(c => c.Apply(It.IsAny<ConventionContext>()))
                 .Callback((ConventionContext c) => c.Application.ThrowOnUnexpectedArgument = false).Verifiable();
-            var args = new[] {"Capture", "some", "test", "arguments"};
+            var args = new[] { "Capture", "some", "test", "arguments" };
             await new HostBuilder()
                 .ConfigureServices(collection => collection
                     .AddSingleton<IConsole>(new TestConsole(_output))
@@ -68,10 +68,10 @@ namespace McMaster.Extensions.Hosting.CommandLine.Tests
             var ex = Assert.Throws<UnrecognizedCommandParsingException>(
                 () => new HostBuilder()
                     .ConfigureServices(collection => collection.AddSingleton<IConsole>(new TestConsole(_output)))
-                    .RunCommandLineApplicationAsync<ParentCommand>(new string[] {"return41"})
+                    .RunCommandLineApplicationAsync<ParentCommand>(new string[] { "return41" })
                     .GetAwaiter()
                     .GetResult());
-            Assert.Equal(new string[] {"return42"}, ex.NearestMatches);
+            Assert.Equal(new string[] { "return42" }, ex.NearestMatches);
         }
 
         [Fact]
@@ -105,8 +105,9 @@ namespace McMaster.Extensions.Hosting.CommandLine.Tests
         }
 
         public class ValueHolder<T>
+            where T : class
         {
-            public T Value { get; set; }
+            public T? Value { get; set; }
         }
 
         [Command("Capture")]
@@ -114,7 +115,7 @@ namespace McMaster.Extensions.Hosting.CommandLine.Tests
         {
             public ValueHolder<string[]> ValueHolder { get; set; }
 
-            public string[] RemainingArguments
+            public string[]? RemainingArguments
             {
                 get => ValueHolder.Value;
                 set => ValueHolder.Value = value;

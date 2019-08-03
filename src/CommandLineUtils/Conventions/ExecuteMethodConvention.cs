@@ -4,6 +4,7 @@
 using System;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace McMaster.Extensions.CommandLineUtils.Conventions
@@ -23,16 +24,16 @@ namespace McMaster.Extensions.CommandLineUtils.Conventions
                 return;
             }
 
-            context.Application.OnExecute(async () => await this.OnExecute(context));
+            context.Application.OnExecuteAsync(async ct => await OnExecute(context, ct));
         }
 
-        private async Task<int> OnExecute(ConventionContext context)
+        private async Task<int> OnExecute(ConventionContext context, CancellationToken cancellationToken)
         {
             const BindingFlags binding = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
             var typeInfo = context.ModelType.GetTypeInfo();
-            MethodInfo method;
-            MethodInfo asyncMethod;
+            MethodInfo? method;
+            MethodInfo? asyncMethod;
             try
             {
                 method = typeInfo.GetMethod("OnExecute", binding);
@@ -48,15 +49,20 @@ namespace McMaster.Extensions.CommandLineUtils.Conventions
                 throw new InvalidOperationException(Strings.AmbiguousOnExecuteMethod);
             }
 
-            method = method ?? asyncMethod;
+            method ??= asyncMethod;
 
             if (method == null)
             {
                 throw new InvalidOperationException(Strings.NoOnExecuteMethodFound);
             }
 
-            var arguments = ReflectionHelper.BindParameters(method, context.Application);
-            var model = context.ModelAccessor.GetModel();
+            var arguments = ReflectionHelper.BindParameters(method, context.Application, cancellationToken);
+            var modelAccessor = context.ModelAccessor;
+            if (modelAccessor == null)
+            {
+                throw new InvalidOperationException(Strings.ConventionRequiresModel);
+            }
+            var model = modelAccessor.GetModel();
 
             if (method.ReturnType == typeof(Task) || method.ReturnType == typeof(Task<int>))
             {
@@ -74,7 +80,7 @@ namespace McMaster.Extensions.CommandLineUtils.Conventions
         {
             try
             {
-                var result = (Task) method.Invoke(instance, arguments);
+                var result = (Task)method.Invoke(instance, arguments);
                 if (result is Task<int> intResult)
                 {
                     return await intResult;
@@ -97,7 +103,7 @@ namespace McMaster.Extensions.CommandLineUtils.Conventions
                 var result = method.Invoke(instance, arguments);
                 if (method.ReturnType == typeof(int))
                 {
-                    return (int) result;
+                    return (int)result;
                 }
             }
             catch (TargetInvocationException e)
